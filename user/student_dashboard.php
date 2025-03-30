@@ -13,6 +13,8 @@ if ($_SESSION['role'] !== 'student') {
     exit();
 }
 
+// var_dump($_SESSION['user_id']);
+// exit();
 
 // Fetch student-specific data
 $studentId = $_SESSION['user_id'];
@@ -61,29 +63,105 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['program'])) {
     if (!$academicYear || !$semester || empty($selectedCourses)) {
         echo "<div class='alert alert-danger text-center'>All fields are required.</div>";
     } else {
-        // Save course registration
-        $stmt = $conn->prepare("INSERT INTO course_registrations (student_id, academic_year, semester, course_id) VALUES (?, ?, ?, ?)");
+        // Prepare the query to check for existing registrations
+        $checkQuery = $conn->prepare("
+            SELECT COUNT(*) AS count 
+            FROM course_registrations 
+            WHERE student_id = ? AND academic_year = ? AND semester = ? AND course_id = ?
+        ");
+
+        // Prepare the query to insert new registrations
+        $insertQuery = $conn->prepare("
+            INSERT INTO course_registrations (student_id, academic_year, semester, course_id) 
+            VALUES (?, ?, ?, ?)
+        ");
+
         foreach ($selectedCourses as $courseId) {
-            $stmt->bind_param("isss", $studentId, $academicYear, $semester, $courseId);
-            $stmt->execute();
+            // Check if the course is already registered
+            $checkQuery->bind_param("isss", $studentId, $academicYear, $semester, $courseId);
+            $checkQuery->execute();
+            $checkResult = $checkQuery->get_result();
+            $row = $checkResult->fetch_assoc();
+
+            if ($row['count'] == 0) {
+                // If not registered, insert the course
+                $insertQuery->bind_param("isss", $studentId, $academicYear, $semester, $courseId);
+                $insertQuery->execute();
+            } else {
+                // Fetch the course code for the duplicate course
+                $courseCodeQuery = $conn->prepare("SELECT course_code FROM courses WHERE id = ?");
+                $courseCodeQuery->bind_param("i", $courseId);
+                $courseCodeQuery->execute();
+                $courseCodeResult = $courseCodeQuery->get_result();
+                $courseCodeRow = $courseCodeResult->fetch_assoc();
+                $courseCode = $courseCodeRow['course_code'];
+                $courseCodeQuery->close();
+
+                // Display the error message with the course code
+                echo "<div class='alert alert-danger text-center'>Course with code ($courseCode) is already registered.</div>";
+            }
         }
-        $stmt->close();
+
+        $checkQuery->close();
+        $insertQuery->close();
 
         echo "<div class='alert alert-success text-center'>Course registration saved successfully!</div>";
     }
 }
 
-// Fetch courses based on the student's program and semester
-$courses = [];
-if (isset($_POST['semester'])) {
-    $studentProgram = $_SESSION['program']; // Assuming the student's program is stored in the session
-    $studentSemester = $_POST['semester']; // Assuming the semester is selected by the student
+// Handle loading courses
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['load_courses'])) {
+    $academicYear = $_POST['academic_year'] ?? null;
+    $semester = $_POST['semester'] ?? null;
 
-    $coursesQuery = $conn->prepare("SELECT * FROM courses WHERE program = ? AND semester = ?");
-    $coursesQuery->bind_param("ss", $studentProgram, $studentSemester);
+    if (!$academicYear || !$semester) {
+        echo "<div class='alert alert-danger text-center'>Please select both Academic Year and Semester.</div>";
+    } else {
+        // Fetch courses based on the student's program, academic year, and semester
+        $coursesQuery = $conn->prepare("
+            SELECT * FROM courses 
+            WHERE program = ? AND academic_year = ? AND semester = ?
+        ");
+        $coursesQuery->bind_param("sss", $program, $academicYear, $semester);
+        $coursesQuery->execute();
+        $courses = $coursesQuery->get_result();
+        $coursesQuery->close();
+    }
+}
+
+// Fetch courses based on the student's program, academic year, and semester
+$courses = [];
+if (!empty($program) && isset($_POST['academic_year']) && isset($_POST['semester'])) {
+    $academicYear = $_POST['academic_year'];
+    $semester = $_POST['semester'];
+
+    $coursesQuery = $conn->prepare("
+        SELECT * FROM courses 
+        WHERE program = ? AND academic_year = ? AND semester = ?
+    ");
+    $coursesQuery->bind_param("sss", $program, $academicYear, $semester);
     $coursesQuery->execute();
     $courses = $coursesQuery->get_result();
     $coursesQuery->close();
+}
+
+// Handle course registration deletion
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_registration'])) {
+    $registrationId = $_POST['registration_id'];
+
+    // Delete the course registration
+    $deleteQuery = $conn->prepare("DELETE FROM course_registrations WHERE id = ?");
+    $deleteQuery->bind_param("i", $registrationId);
+
+    if ($deleteQuery->execute()) {
+        $_SESSION['message'] = "Course registration deleted successfully!";
+    } else {
+        $_SESSION['message'] = "Error deleting course registration: " . $deleteQuery->error;
+    }
+
+    $deleteQuery->close();
+    header("Location: student_dashboard.php");
+    exit();
 }
 ?>
 
@@ -134,7 +212,7 @@ if (isset($_POST['semester'])) {
             </div>
         <?php endif; ?>
 
-        <!-- Course Registration Form -->
+        <!-- Academic Year and Semester Selection -->
         <form action="student_dashboard.php" method="POST" class="mt-4">
             <div class="mb-3">
                 <label for="academic_year" class="form-label">Academic Year</label>
@@ -148,10 +226,17 @@ if (isset($_POST['semester'])) {
                     <option value="Second">Second</option>
                 </select>
             </div>
-            <div class="mb-3">
-                <label for="courses" class="form-label">Courses</label>
-                <div>
-                    <?php if (!empty($courses)): ?>
+            <button type="submit" name="load_courses" class="btn btn-secondary">Load Courses</button>
+        </form>
+
+        <!-- Courses Section -->
+        <?php if (isset($_POST['load_courses']) && !empty($courses) && $courses->num_rows > 0): ?>
+            <form action="student_dashboard.php" method="POST" class="mt-4">
+                <input type="hidden" name="academic_year" value="<?php echo htmlspecialchars($academicYear); ?>">
+                <input type="hidden" name="semester" value="<?php echo htmlspecialchars($semester); ?>">
+                <div class="mb-3">
+                    <label for="courses" class="form-label">Courses</label>
+                    <div>
                         <?php while ($course = $courses->fetch_assoc()): ?>
                             <div class="form-check">
                                 <input class="form-check-input" type="checkbox" name="courses[]" value="<?php echo $course['id']; ?>" id="course_<?php echo $course['id']; ?>">
@@ -160,36 +245,57 @@ if (isset($_POST['semester'])) {
                                 </label>
                             </div>
                         <?php endwhile; ?>
-                    <?php else: ?>
-                        <p class="text-muted">No courses available for the selected semester.</p>
-                    <?php endif; ?>
+                    </div>
                 </div>
-            </div>
-            <button type="submit" class="btn btn-primary">Submit Registration</button>
-        </form>
+                <button type="submit" class="btn btn-primary">Submit Registration</button>
+            </form>
+        <?php elseif (isset($_POST['load_courses'])): ?>
+            <p class="text-muted">No courses available for the selected program, academic year, and semester.</p>
+        <?php endif; ?>
 
         <!-- Display Registered Courses -->
         <h5 class="mt-5">Registered Courses:</h5>
         <table class="table table-bordered">
             <thead>
                 <tr>
-                    <th>Course</th>
+                    <th>Course Code</th> <!-- New column -->
+                    <th>Course Name</th>
                     <th>Academic Year</th>
                     <th>Semester</th>
+                    <th>Actions</th> <!-- New column for actions -->
                 </tr>
             </thead>
             <tbody>
                 <?php
-                $registeredCoursesQuery = $conn->prepare("SELECT c.course_name, r.academic_year, r.semester FROM course_registrations r JOIN courses c ON r.course_id = c.id WHERE r.student_id = ?");
+                $registeredCoursesQuery = $conn->prepare("
+                    SELECT r.id AS registration_id, c.course_code, c.course_name, r.academic_year, r.semester 
+                    FROM course_registrations r 
+                    JOIN courses c ON r.course_id = c.id 
+                    WHERE r.student_id = ?
+                ");
                 $registeredCoursesQuery->bind_param("i", $studentId);
                 $registeredCoursesQuery->execute();
                 $registeredCourses = $registeredCoursesQuery->get_result();
                 while ($row = $registeredCourses->fetch_assoc()):
                 ?>
                     <tr>
+                        <td><?php echo htmlspecialchars($row['course_code']); ?></td> <!-- Display Course Code -->
                         <td><?php echo htmlspecialchars($row['course_name']); ?></td>
                         <td><?php echo htmlspecialchars($row['academic_year']); ?></td>
                         <td><?php echo htmlspecialchars($row['semester']); ?></td>
+                        <td>
+                            <!-- Edit Button -->
+                            <form action="edit_registration.php" method="GET" class="d-inline">
+                                <input type="hidden" name="registration_id" value="<?php echo $row['registration_id']; ?>">
+                                <button type="submit" class="btn btn-warning btn-sm">Edit</button>
+                            </form>
+
+                            <!-- Delete Button -->
+                            <form action="student_dashboard.php" method="POST" class="d-inline">
+                                <input type="hidden" name="registration_id" value="<?php echo $row['registration_id']; ?>">
+                                <button type="submit" name="delete_registration" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete this registration?');">Delete</button>
+                            </form>
+                        </td>
                     </tr>
                 <?php endwhile; ?>
                 <?php $registeredCoursesQuery->close(); ?>
@@ -201,21 +307,25 @@ if (isset($_POST['semester'])) {
         <table class="table table-bordered">
             <thead>
                 <tr>
+                    <th>Course Code</th> <!-- New column -->
                     <th>Course Name</th>
                     <th>Academic Year</th>
+                    <th>Semester</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if ($courses && $courses->num_rows > 0): ?>
                     <?php while ($course = $courses->fetch_assoc()): ?>
                         <tr>
+                            <td><?php echo htmlspecialchars($course['course_code']); ?></td> <!-- Display Course Code -->
                             <td><?php echo htmlspecialchars($course['course_name']); ?></td>
                             <td><?php echo htmlspecialchars($course['academic_year']); ?></td>
+                            <td><?php echo htmlspecialchars($course['semester']); ?></td>
                         </tr>
                     <?php endwhile; ?>
                 <?php else: ?>
                     <tr>
-                        <td colspan="2" class="text-center">No courses available for your program and semester.</td>
+                        <td colspan="4" class="text-center">No courses available for your program and semester.</td>
                     </tr>
                 <?php endif; ?>
             </tbody>
