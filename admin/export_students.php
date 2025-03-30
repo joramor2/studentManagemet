@@ -1,6 +1,6 @@
 <?php
-session_start();
-include 'db.php'; // Include database connection
+
+include '../app/db.php'; // Include database connection
 
 header("Content-Type: application/vnd.ms-excel");
 header("Content-Disposition: attachment; filename=registered_students.xls");

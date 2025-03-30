@@ -1,13 +1,12 @@
 <?php
-session_start();
+include '../app/db.php'; // Database connection
 
 // Check if user is logged in and is an admin
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header("Location: login.php");
+    header("Location: ../auth/login.php");
     exit();
 }
 
-include 'db.php'; // Database connection
 
 // Fetch lecturer details
 if (isset($_GET['lecturer_id'])) {

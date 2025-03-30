@@ -1,6 +1,6 @@
 <?php
-session_start();
-include 'db.php'; // Database connection
+
+include '../app/db.php'; // Database connection
 
 // Check if lecturer_id is provided
 if (!isset($_GET['lecturer_id']) || !is_numeric($_GET['lecturer_id'])) {

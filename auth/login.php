@@ -22,6 +22,7 @@
                     </div>
                     <button type="submit" class="btn btn-primary w-100">Login</button>
                 </form>
+                <p class="text-center mt-3">Don't have an account? <a href="register.php">Register</a></p>
                 <p class="text-center mt-3"><a href="forgot_password.php">Forgot Password?</a></p>
             </div>
         </div>
@@ -67,9 +68,9 @@
 
                 // Redirect based on role
                 if ($user['role'] === 'admin') {
-                    header("Location: admin_dashboard.php");
+                    header("Location: ../admin/dashboard.php");
                 } else if ($user['role'] === 'student') {
-                    header("Location: student_dashboard.php");
+                    header("Location: ../user/student_dashboard.php");
                 } else if ($user['role'] === 'lecturer') {
                     header("Location: lecturer_dashboard.php");
                 } else {

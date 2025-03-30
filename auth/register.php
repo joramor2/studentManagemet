@@ -88,7 +88,7 @@
         if ($stmt->execute()) {
             echo "<div class='alert alert-success text-center'>Registration successful! Redirecting to login...</div>";
             // Redirect to login page
-            header("refresh:3;url=login.php");
+            header("refresh:3;url=../auth/login.php");
             exit();
         } else {
             die("<div class='alert alert-danger text-center'>Error executing query: " . $stmt->error . "</div>");

@@ -1,19 +1,18 @@
 <?php
-session_start();
 
+include '../app/db.php'; // Database connection
 // Check if user is logged in
 if (!isset($_SESSION['user_id'])) {
-    header("Location: login.php");
+    header("Location: ../auth/login.php");
     exit();
 }
 
 // Check if the user is a student
 if ($_SESSION['role'] !== 'student') {
-    header("Location: login.php");
+    header("Location: ../auth/login.php");
     exit();
 }
 
-include 'db.php'; // Database connection
 
 // Fetch student-specific data
 $studentId = $_SESSION['user_id'];

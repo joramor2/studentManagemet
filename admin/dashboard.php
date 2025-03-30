@@ -1,13 +1,13 @@
 <?php
-session_start();
+include '../app/db.php'; // Database connection
 
 // Check if user is logged in and is an admin
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header("Location: login.php");
+    header("Location: ../auth/login.php");
     exit();
 }
 
-include 'db.php'; // Database connection
+
 
 // Fetch total counts for statistics
 $totalStudents = $conn->query("SELECT COUNT(*) AS total FROM users WHERE role = 'student'")->fetch_assoc()['total'];
@@ -425,7 +425,7 @@ $courses = $conn->query("SELECT * FROM courses LIMIT $recordsPerPage OFFSET $off
                             <tr>
                                 <td><?php echo htmlspecialchars($student['full_name']); ?></td>
                                 <td><?php echo htmlspecialchars($student['email']); ?></td>
-                                <td><?php echo htmlspecialchars($student['program']); ?></td>
+                                <td><?php echo htmlspecialchars($student['program'] ?? 'Program not selected yet'); ?></td>
                                 <td><?php echo htmlspecialchars($student['registration_number']); ?></td> <!-- New column -->
                                 <td><?php echo htmlspecialchars($student['status']); ?></td>
                                 <td>
