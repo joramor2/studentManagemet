@@ -1,4 +1,5 @@
 <?php
+session_start(); // Start the session at the top of the script
 $host = "localhost"; 
 $db_name = "schoolmanagement";  // Change if your database name is different
 $username = "root";  // Default for local MySQL (change if needed)

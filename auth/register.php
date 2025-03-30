@@ -42,7 +42,7 @@
     <?php
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Include database connection
-        require 'db.php';
+        require '../app/db.php';
 
         // Get form data and validate
         $full_name = $_POST['full_name'] ?? null;

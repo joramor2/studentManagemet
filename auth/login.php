@@ -28,11 +28,10 @@
     </div>
 
     <?php
-    session_start(); // Start the session at the top of the script
-
+    
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Include database connection
-        require 'db.php';
+        require '../app/db.php';
 
         // Get form data
         $username = $_POST['username'] ?? null; // Can be registration number or email
