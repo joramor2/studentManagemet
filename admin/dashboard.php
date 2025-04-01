@@ -92,12 +92,11 @@ if (isset($_POST['add_course'])) {
     $courseName = $_POST['course_name'];
     $program = $_POST['program'];
     $semester = $_POST['semester'];
-    $academicYear = $_POST['academic_year'];
     $creditUnit = $_POST['credit_unit'];
 
     // Insert the course into the database
-    $stmt = $conn->prepare("INSERT INTO courses (course_code, course_name, program, semester, academic_year, credit_unit) VALUES (?, ?, ?, ?, ?, ?)");
-    $stmt->bind_param("sssssi", $courseCode, $courseName, $program, $semester, $academicYear, $creditUnit);
+    $stmt = $conn->prepare("INSERT INTO courses (course_code, course_name, program, semester, credit_unit) VALUES (?, ?, ?, ?, ?)");
+    $stmt->bind_param("ssssi", $courseCode, $courseName, $program, $semester, $creditUnit);
 
     if ($stmt->execute()) {
         $_SESSION['message'] = "Course added successfully!";
@@ -224,6 +223,54 @@ if (isset($_POST['delete_assignment'])) {
         $_SESSION['message'] = "Assignments deleted successfully!";
     } else {
         $_SESSION['message'] = "Error deleting assignments: " . $stmt->error;
+    }
+
+    $stmt->close();
+    header("Location: dashboard.php");
+    exit();
+}
+
+// Handle adding a new academic year
+if (isset($_POST['add_academic_year'])) {
+    $academicYear = trim($_POST['academic_year']);
+
+    // Check if the academic year already exists
+    $stmt = $conn->prepare("SELECT COUNT(*) AS count FROM academic_years WHERE year = ?");
+    $stmt->bind_param("s", $academicYear);
+    $stmt->execute();
+    $result = $stmt->get_result()->fetch_assoc();
+
+    if ($result['count'] > 0) {
+        $_SESSION['message'] = "Error: Academic Year already exists.";
+    } else {
+        // Insert the new academic year
+        $stmt = $conn->prepare("INSERT INTO academic_years (year) VALUES (?)");
+        $stmt->bind_param("s", $academicYear);
+
+        if ($stmt->execute()) {
+            $_SESSION['message'] = "Academic Year added successfully!";
+        } else {
+            $_SESSION['message'] = "Error adding Academic Year: " . $stmt->error;
+        }
+    }
+
+    $stmt->close();
+    header("Location: dashboard.php");
+    exit();
+}
+
+// Handle deleting an academic year
+if (isset($_POST['delete_academic_year'])) {
+    $academicYearId = $_POST['academic_year_id'];
+
+    // Delete the academic year
+    $stmt = $conn->prepare("DELETE FROM academic_years WHERE id = ?");
+    $stmt->bind_param("i", $academicYearId);
+
+    if ($stmt->execute()) {
+        $_SESSION['message'] = "Academic Year deleted successfully!";
+    } else {
+        $_SESSION['message'] = "Error deleting Academic Year: " . $stmt->error;
     }
 
     $stmt->close();
@@ -358,6 +405,7 @@ $courses = $conn->query("SELECT * FROM courses LIMIT $recordsPerPage OFFSET $off
             <a href="#" class="btn btn-primary" onclick="showSection('lecturers')">Manage Lecturers</a>
             <a href="#" class="btn btn-primary" onclick="showSection('courses')">Manage Courses</a>
             <a href="#" class="btn btn-primary" onclick="showSection('assign_courses')">Assign Courses to Lecturers</a>
+            <a href="#" class="btn btn-primary" onclick="showSection('academic_years')">Manage Academic Years</a>
         </div>
 
         <!-- Manage Students Section -->
@@ -570,9 +618,6 @@ $courses = $conn->query("SELECT * FROM courses LIMIT $recordsPerPage OFFSET $off
                             <option value="Second">Second</option>
                         </select>
                     </div>
-                    <div class="col-md-2">
-                        <input type="text" name="academic_year" class="form-control" placeholder="Academic Year (e.g., 2024/2025)" required>
-                    </div>
                     <div class="col-md-1">
                         <input type="number" name="credit_unit" class="form-control" placeholder="Credit Unit" required>
                     </div>
@@ -590,7 +635,6 @@ $courses = $conn->query("SELECT * FROM courses LIMIT $recordsPerPage OFFSET $off
                         <th>Course Name</th>
                         <th>Program</th>
                         <th>Semester</th>
-                        <th>Academic Year</th>
                         <th>Credit Unit</th>
                         <th>Actions</th>
                     </tr>
@@ -603,7 +647,6 @@ $courses = $conn->query("SELECT * FROM courses LIMIT $recordsPerPage OFFSET $off
                                 <td><?php echo htmlspecialchars($course['course_name']); ?></td>
                                 <td><?php echo htmlspecialchars($course['program']); ?></td>
                                 <td><?php echo htmlspecialchars($course['semester']); ?></td>
-                                <td><?php echo htmlspecialchars($course['academic_year']); ?></td>
                                 <td><?php echo htmlspecialchars($course['credit_unit']); ?></td>
                                 <td>
                                     <!-- Edit Action -->
@@ -626,7 +669,7 @@ $courses = $conn->query("SELECT * FROM courses LIMIT $recordsPerPage OFFSET $off
                         <?php endwhile; ?>
                     <?php else: ?>
                         <tr>
-                            <td colspan="7" class="text-center">No courses found.</td>
+                            <td colspan="6" class="text-center">No courses found.</td>
                         </tr>
                     <?php endif; ?>
                 </tbody>
@@ -729,6 +772,60 @@ $courses = $conn->query("SELECT * FROM courses LIMIT $recordsPerPage OFFSET $off
                     else: ?>
                         <tr>
                             <td colspan="3" class="text-center">No assignments found.</td>
+                        </tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Manage Academic Years Section -->
+        <div id="academic_years" class="section">
+            <h4 class="mt-4">Manage Academic Years</h4>
+
+            <!-- Add Academic Year Form -->
+            <form action="dashboard.php" method="POST" class="mb-4">
+                <div class="row">
+                    <div class="col-md-4">
+                        <input type="text" name="academic_year" class="form-control" placeholder="Enter Academic Year (e.g., 2024/2025)" required>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" name="add_academic_year" class="btn btn-primary">Add Academic Year</button>
+                    </div>
+                </div>
+            </form>
+
+            <!-- Display Academic Years -->
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th>Academic Year</th>
+                        <th>Created At</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php
+                    // Fetch all academic years
+                    $academicYears = $conn->query("SELECT * FROM academic_years ORDER BY created_at DESC");
+                    if ($academicYears && $academicYears->num_rows > 0):
+                        while ($year = $academicYears->fetch_assoc()): ?>
+                            <tr>
+                                <td><?php echo htmlspecialchars($year['year']); ?></td>
+                                <td><?php echo htmlspecialchars($year['created_at']); ?></td>
+                                <td>
+                                    <!-- Delete Action -->
+                                    <form action="dashboard.php" method="POST" class="d-inline">
+                                        <input type="hidden" name="academic_year_id" value="<?php echo $year['id']; ?>">
+                                        <button type="submit" name="delete_academic_year" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete this academic year?');">
+                                            Delete
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        <?php endwhile;
+                    else: ?>
+                        <tr>
+                            <td colspan="3" class="text-center">No academic years found.</td>
                         </tr>
                     <?php endif; ?>
                 </tbody>

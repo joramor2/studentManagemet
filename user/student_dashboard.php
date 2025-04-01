@@ -33,6 +33,75 @@ if ($programResult->num_rows === 1) {
 }
 $programQuery->close();
 
+// Fetch the student's level from the database
+$levelQuery = $conn->prepare("SELECT level FROM users WHERE id = ?");
+$levelQuery->bind_param("i", $studentId);
+$levelQuery->execute();
+$levelResult = $levelQuery->get_result();
+
+if ($levelResult->num_rows === 1) {
+    $levelRow = $levelResult->fetch_assoc();
+    $level = $levelRow['level'];
+} else {
+    $level = null; // Default to null if no level is found
+}
+$levelQuery->close();
+
+// Check if the user has confirmed their level for the current session
+if (!isset($_SESSION['level_confirmed']) || $_SESSION['level_confirmed'] !== true) {
+    // Prompt the user to confirm or update their level
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['level'])) {
+        $selectedLevel = $_POST['level'];
+
+        // Update the level in the database
+        $updateLevelQuery = $conn->prepare("UPDATE users SET level = ? WHERE id = ?");
+        $updateLevelQuery->bind_param("si", $selectedLevel, $studentId);
+
+        if ($updateLevelQuery->execute()) {
+            $_SESSION['level_confirmed'] = true; // Mark level as confirmed
+            $_SESSION['message'] = "Level updated successfully!";
+            header("Location: student_dashboard.php");
+            exit();
+        } else {
+            echo "<div class='alert alert-danger text-center'>Error updating level: " . $updateLevelQuery->error . "</div>";
+        }
+
+        $updateLevelQuery->close();
+    }
+
+    // Display the level selection form
+    ?>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Select Level</title>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    </head>
+    <body>
+        <div class="container mt-5">
+            <h3 class="text-center">Select Your Level</h3>
+            <form action="student_dashboard.php" method="POST">
+                <div class="mb-3">
+                    <label for="level" class="form-label">Select Level</label>
+                    <select class="form-control" id="level" name="level" required>
+                        <option value="">Select Level</option>
+                        <option value="100" <?php echo ($level === '100') ? 'selected' : ''; ?>>100 Level</option>
+                        <option value="200" <?php echo ($level === '200') ? 'selected' : ''; ?>>200 Level</option>
+                        <option value="300" <?php echo ($level === '300') ? 'selected' : ''; ?>>300 Level</option>
+                        <option value="400" <?php echo ($level === '400') ? 'selected' : ''; ?>>400 Level</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary">Save Level</button>
+            </form>
+        </div>
+    </body>
+    </html>
+    <?php
+    exit(); // Stop further execution until the level is confirmed
+}
+
 // var_dump($program);
 
 // Handle program selection form submission
@@ -54,8 +123,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['program'])) {
     $updateProgramQuery->close();
 }
 
+// Handle level selection form submission
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['level'])) {
+    $selectedLevel = $_POST['level'];
+
+    // Update the level in the database
+    $updateLevelQuery = $conn->prepare("UPDATE users SET level = ? WHERE id = ?");
+    $updateLevelQuery->bind_param("si", $selectedLevel, $studentId);
+
+    if ($updateLevelQuery->execute()) {
+        $_SESSION['message'] = "Level updated successfully!";
+        header("Location: student_dashboard.php");
+        exit();
+    } else {
+        echo "<div class='alert alert-danger text-center'>Error updating level: " . $updateLevelQuery->error . "</div>";
+    }
+
+    $updateLevelQuery->close();
+}
+
 // Handle form submission
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['program'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['program']) && !isset($_POST['level'])) {
     $academicYear = $_POST['academic_year'] ?? null;
     $semester = $_POST['semester'] ?? null;
     $selectedCourses = $_POST['courses'] ?? [];
@@ -163,6 +251,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_registration']
     header("Location: student_dashboard.php");
     exit();
 }
+
+// Fetch registered courses for the student
+$registeredCoursesQuery = $conn->prepare("
+    SELECT r.id AS registration_id, c.course_code, c.course_name, c.credit_unit, r.academic_year, r.semester 
+    FROM course_registrations r 
+    JOIN courses c ON r.course_id = c.id 
+    WHERE r.student_id = ?
+");
+$registeredCoursesQuery->bind_param("i", $studentId);
+$registeredCoursesQuery->execute();
+$registeredCourses = $registeredCoursesQuery->get_result();
 ?>
 
 <!DOCTYPE html>
@@ -212,6 +311,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_registration']
             </div>
         <?php endif; ?>
 
+        <!-- Level Selection -->
+        <?php if (empty($level)): ?>
+            <div class="alert alert-warning text-center">
+                You have not selected your level yet. Please select your level below.
+            </div>
+            <form action="student_dashboard.php" method="POST">
+                <div class="mb-3">
+                    <label for="level" class="form-label">Select Level</label>
+                    <select class="form-control" id="level" name="level" required>
+                        <option value="">Select Level</option>
+                        <option value="100">100 Level</option>
+                        <option value="200">200 Level</option>
+                        <option value="300">300 Level</option>
+                        <option value="400">400 Level</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary">Save Level</button>
+            </form>
+        <?php endif; ?>
+
         <!-- Academic Year and Semester Selection -->
         <form action="student_dashboard.php" method="POST" class="mt-4">
             <div class="mb-3">
@@ -258,31 +377,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_registration']
         <table class="table table-bordered">
             <thead>
                 <tr>
-                    <th>Course Code</th> <!-- New column -->
+                    <th>Course Code</th>
                     <th>Course Name</th>
                     <th>Academic Year</th>
                     <th>Semester</th>
-                    <th>Actions</th> <!-- New column for actions -->
+                    <th>Credit Unit</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
-                <?php
-                $registeredCoursesQuery = $conn->prepare("
-                    SELECT r.id AS registration_id, c.course_code, c.course_name, r.academic_year, r.semester 
-                    FROM course_registrations r 
-                    JOIN courses c ON r.course_id = c.id 
-                    WHERE r.student_id = ?
-                ");
-                $registeredCoursesQuery->bind_param("i", $studentId);
-                $registeredCoursesQuery->execute();
-                $registeredCourses = $registeredCoursesQuery->get_result();
-                while ($row = $registeredCourses->fetch_assoc()):
-                ?>
+                <?php while ($row = $registeredCourses->fetch_assoc()): ?>
                     <tr>
-                        <td><?php echo htmlspecialchars($row['course_code']); ?></td> <!-- Display Course Code -->
+                        <td><?php echo htmlspecialchars($row['course_code']); ?></td>
                         <td><?php echo htmlspecialchars($row['course_name']); ?></td>
                         <td><?php echo htmlspecialchars($row['academic_year']); ?></td>
                         <td><?php echo htmlspecialchars($row['semester']); ?></td>
+                        <td><?php echo htmlspecialchars($row['credit_unit']); ?></td>
                         <td>
                             <!-- Edit Button -->
                             <form action="edit_registration.php" method="GET" class="d-inline">
@@ -330,6 +440,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_registration']
                 <?php endif; ?>
             </tbody>
         </table>
+        <a href="generate_crf.php" class="btn btn-primary">Download CRF</a>
     </div>
 </body>
 </html>
