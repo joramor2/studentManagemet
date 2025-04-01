@@ -25,20 +25,29 @@ $studentQuery->execute();
 $student = $studentQuery->get_result()->fetch_assoc();
 $studentQuery->close();
 
-// Fetch registered courses
+// Fetch only currently registered courses along with academic year and semester
 $registeredCoursesQuery = $conn->prepare("
-    SELECT c.course_code, c.course_name, c.credit_unit 
+    SELECT r.academic_year, r.semester, c.course_code, c.course_name, c.credit_unit 
     FROM course_registrations r 
     JOIN courses c ON r.course_id = c.id 
-    WHERE r.student_id = ?
+    WHERE r.student_id = ? AND r.status = 'current'
 ");
 $registeredCoursesQuery->bind_param("i", $studentId);
 $registeredCoursesQuery->execute();
 $registeredCourses = $registeredCoursesQuery->get_result();
 
-// Handle undefined POST keys
-$academicYear = $_POST['academic_year'] ?? 'Not Provided';
-$semester = $_POST['semester'] ?? 'Not Provided';
+// Initialize Academic Year and Semester
+$academicYear = 'Not Provided';
+$semester = 'Not Provided';
+
+// Fetch the first row to get Academic Year and Semester
+if ($registeredCourses->num_rows > 0) {
+    $firstRow = $registeredCourses->fetch_assoc();
+    $academicYear = $firstRow['academic_year'];
+    $semester = $firstRow['semester'];
+    // Reset the result pointer to loop through all courses later
+    $registeredCourses->data_seek(0);
+}
 
 // Create PDF
 $pdf = new FPDF();
